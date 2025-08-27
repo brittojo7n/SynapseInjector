@@ -4,10 +4,8 @@ import ctypes
 from ctypes import wintypes
 import psutil
 from typing import List, Dict
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QComboBox, QPushButton, QTextEdit, QLabel, QFrame, QMessageBox,
-                             QCompleter, QStyleFactory)
-from PyQt5.QtCore import Qt, QTimer, QStringListModel
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QTextEdit, QLabel, QCompleter, QStyleFactory, QLineEdit
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QPalette, QColor, QTextCursor
 
 # Windows API setup
@@ -69,7 +67,7 @@ class DLLInjector:
             
             luid = LUID()
             if not ctypes.windll.advapi32.LookupPrivilegeValueA(
-                None, "SeDebugPrivilege", ctypes.byref(luid)
+                None, b"SeDebugPrivilege", ctypes.byref(luid)
             ):
                 ctypes.windll.kernel32.CloseHandle(token)
                 return False
@@ -109,7 +107,6 @@ class DLLInjector:
         
         dll_path = os.path.abspath(dll_path)
         
-        # Find process by name
         target_pid = None
         for proc in psutil.process_iter(['pid', 'name']):
             try:
@@ -176,7 +173,6 @@ class DLLInjector:
             if process_handle:
                 kernel32.CloseHandle(process_handle)
 
-
 class DarkTheme:
     @staticmethod
     def apply(app):
@@ -198,83 +194,51 @@ class DarkTheme:
         dark_palette.setColor(QPalette.HighlightedText, Qt.black)
         
         app.setPalette(dark_palette)
+
         app.setStyleSheet("""
-            QMainWindow {
-                background-color: #191919;
-                color: white;
-                border: 1px solid #333;
-            }
-            QWidget {
-                background-color: #191919;
-                color: white;
-            }
-            QToolTip { 
-                color: #ffffff; 
-                background-color: #2a2a2a; 
-                border: 1px solid #767676; 
-            }
+            QMainWindow { background-color: #191919; color: white; border: 1px solid #333; }
+            QWidget { background-color: #191919; color: white; }
+            QToolTip { color: #ffffff; background-color: #2a2a2a; border: 1px solid #767676; }
             QComboBox {
-                background-color: #232323;
-                color: white;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 5px;
-                selection-background-color: #2a82da;
+                background-color: #232323; color: white; border: 1px solid #3a3a3a;
+                border-radius: 4px; padding: 5px; padding-left: 10px; selection-background-color: #2a82da;
             }
             QComboBox QAbstractItemView {
-                background-color: #191919;
-                color: white;
-                selection-background-color: #2a82da;
+                background-color: #191919; color: white; selection-background-color: #2a82da;
                 border: 1px solid #3a3a3a;
             }
             QComboBox::drop-down {
-                border: none;
-                background: #232323;
-                width: 20px;
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 25px;
+                border-left-width: 1px;
+                border-left-color: #3a3a3a;
+                border-left-style: solid;
+                border-top-right-radius: 3px;
+                border-bottom-right-radius: 3px;
             }
             QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid white;
-                border-bottom: 4px solid transparent;
+                /* This is the standard, working method for creating the symbol */
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid white;
+                width: 0px;
+                height: 0px;
             }
             QPushButton {
-                background-color: #2a2a2a;
-                color: white;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                padding: 8px;
-                font-weight: bold;
+                background-color: #2a2a2a; color: white; border: 1px solid #3a3a3a;
+                border-radius: 4px; padding: 8px; font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #3a3a3a;
-                border: 1px solid #4a4a4a;
-            }
-            QPushButton:pressed {
-                background-color: #1a1a1a;
-            }
-            QPushButton:disabled {
-                background-color: #1a1a1a;
-                color: #666;
-            }
+            QPushButton:hover { background-color: #3a3a3a; border: 1px solid #4a4a4a; }
+            QPushButton:pressed { background-color: #1a1a1a; }
+            QPushButton:disabled { background-color: #1a1a1a; color: #666; }
             QTextEdit {
-                background-color: #191919;
-                color: #e0e0e0;
-                border: 1px solid #3a3a3a;
-                border-radius: 4px;
-                font-family: Consolas, 'Courier New', monospace;
+                background-color: #191919; color: #e0e0e0; border: 1px solid #3a3a3a;
+                border-radius: 4px; font-family: Consolas, 'Courier New', monospace;
             }
-            QLabel {
-                color: #e0e0e0;
-                background-color: transparent;
-            }
-            QStatusBar {
-                background-color: #1a1a1a;
-                color: #e0e0e0;
-            }
+            QLabel { color: #e0e0e0; background-color: transparent; }
+            QStatusBar { background-color: #1a1a1a; color: #e0e0e0; }
         """)
-
 
 class SynapseInjectorGUI(QMainWindow):
     def __init__(self):
@@ -284,23 +248,20 @@ class SynapseInjectorGUI(QMainWindow):
         self.init_ui()
         self.refresh_processes()
         
-        # Set up a timer to refresh processes every 5 seconds
         self.timer = QTimer()
         self.timer.timeout.connect(self.refresh_processes)
         self.timer.start(5000)
     
     def init_ui(self):
         self.setWindowTitle("Synapse Injector")
-        self.setGeometry(300, 300, 800, 600)
+        self.setFixedSize(800, 600)
         
-        # Set window properties for dark title bar (Windows 10/11)
         try:
             if hasattr(ctypes.windll.dwmapi, 'DwmSetWindowAttribute'):
-                # Enable dark mode for title bar
                 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
                 value = ctypes.c_int(1)
                 hwnd = self.winId().__int__()
-                result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
                     ctypes.c_void_p(hwnd), DWMWA_USE_IMMERSIVE_DARK_MODE, 
                     ctypes.byref(value), ctypes.sizeof(value)
                 )
@@ -308,14 +269,12 @@ class SynapseInjectorGUI(QMainWindow):
             print(f"Could not set dark title bar: {e}")
         
         central_widget = QWidget()
-        central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         
         layout = QVBoxLayout(central_widget)
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # Title
         title_label = QLabel("Synapse Injector")
         title_font = QFont()
         title_font.setPointSize(18)
@@ -324,10 +283,8 @@ class SynapseInjectorGUI(QMainWindow):
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet("""
             QLabel {
-                color: #e0e0e0; 
-                background-color: transparent;
-                padding: 10px;
-                border-bottom: 2px solid #2a82da;
+                color: #e0e0e0; background-color: transparent;
+                padding: 10px; border-bottom: 2px solid #2a82da;
             }
         """)
         layout.addWidget(title_label)
@@ -359,10 +316,16 @@ class SynapseInjectorGUI(QMainWindow):
         dll_label.setFixedWidth(100)
         dll_layout.addWidget(dll_label)
         
-        self.dll_combo = QComboBox()
-        self.dll_combo.setEditable(True)
-        self.dll_combo.setMinimumWidth(300)
-        dll_layout.addWidget(self.dll_combo)
+        self.dll_path_input = QLineEdit()
+        self.dll_path_input.setPlaceholderText("Enter DLL path or click Browse...")
+        self.dll_path_input.setMinimumWidth(300)
+        self.dll_path_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #232323; color: white; border: 1px solid #3a3a3a;
+                border-radius: 4px; padding: 5px; selection-background-color: #2a82da;
+            }
+        """)
+        dll_layout.addWidget(self.dll_path_input)
         
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_dll)
@@ -378,38 +341,23 @@ class SynapseInjectorGUI(QMainWindow):
         self.inject_btn.setMinimumHeight(45)
         self.inject_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2a82da;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
+                background-color: #2a82da; color: white; border: none;
+                border-radius: 4px; font-weight: bold; font-size: 14px;
             }
-            QPushButton:hover {
-                background-color: #3a92ea;
-            }
-            QPushButton:pressed {
-                background-color: #1a72ca;
-            }
-            QPushButton:disabled {
-                background-color: #1a1a1a;
-                color: #666;
-            }
+            QPushButton:hover { background-color: #3a92ea; }
+            QPushButton:pressed { background-color: #1a72ca; }
+            QPushButton:disabled { background-color: #1a1a1a; color: #666; }
         """)
         layout.addWidget(self.inject_btn)
         
-        # Console
         console_label = QLabel("Console Output:")
-        console_label.setFixedWidth(100)
         layout.addWidget(console_label)
         
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         layout.addWidget(self.console)
         
-        # Status bar
         self.statusBar().showMessage("Ready")
-        
         self.log_message("Synapse Injector initialized. Ready to inject.")
     
     def refresh_processes(self):
@@ -422,7 +370,6 @@ class SynapseInjectorGUI(QMainWindow):
             process_names = sorted({p['name'] for p in self.processes}, key=lambda x: x.lower())
             self.process_combo.addItems(process_names)
             
-            # Try to restore the previous selection
             index = self.process_combo.findText(current_text)
             if index >= 0:
                 self.process_combo.setCurrentIndex(index)
@@ -440,14 +387,11 @@ class SynapseInjectorGUI(QMainWindow):
             self, "Select DLL File", "", "DLL Files (*.dll);;All Files (*)"
         )
         if file_path:
-            self.dll_combo.setCurrentText(file_path)
-            # Add to recent DLLs if not already there
-            if self.dll_combo.findText(file_path) == -1:
-                self.dll_combo.addItem(file_path)
+            self.dll_path_input.setText(file_path)
     
     def inject(self):
         process_name = self.process_combo.currentText().strip()
-        dll_path = self.dll_combo.currentText().strip()
+        dll_path = self.dll_path_input.text().strip()
         
         if not process_name:
             self.log_message("Error: Please select a process to inject into.")
@@ -460,7 +404,7 @@ class SynapseInjectorGUI(QMainWindow):
         self.log_message(f"Attempting to inject {dll_path} into {process_name}...")
         self.statusBar().showMessage("Injecting...")
         self.inject_btn.setEnabled(False)
-        QApplication.processEvents()  # Update UI
+        QApplication.processEvents()
         
         success, message = self.injector.inject_dll(process_name, dll_path)
         
@@ -489,9 +433,12 @@ def is_admin():
 
 if __name__ == "__main__":
     if not is_admin():
-        # Restart with admin rights
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
         sys.exit(0)
+
+    # High DPI scaling on modern displays
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
     app = QApplication(sys.argv)
     DarkTheme.apply(app)
