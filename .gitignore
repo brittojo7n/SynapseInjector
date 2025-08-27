@@ -3,6 +3,7 @@
 venv/
 .env/
 env/
+myenv/
 __pycache__/
 *.pyc
 .vscode/
