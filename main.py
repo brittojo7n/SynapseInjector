@@ -1,6 +1,7 @@
 import sys
 import os
 import ctypes
+from ctypes import wintypes
 import psutil
 from typing import List, Dict
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -16,6 +17,9 @@ MEM_RESERVE = 0x2000
 PAGE_READWRITE = 0x04
 
 kernel32 = ctypes.windll.kernel32
+user32 = ctypes.windll.user32
+dwmapi = ctypes.windll.dwmapi
+
 kernel32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
 kernel32.OpenProcess.restype = ctypes.c_void_p
 kernel32.VirtualAllocEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong, ctypes.c_ulong]
@@ -99,7 +103,7 @@ class DLLInjector:
                 continue
         return processes
 
-    def inject_dll(self, process_name: str, dll_path: str) -> (bool, str):
+    def inject_dll(self, process_name: str, dll_path: str) -> tuple[bool, str]:
         if not os.path.exists(dll_path):
             return False, f"DLL file not found: {dll_path}"
         
@@ -195,32 +199,53 @@ class DarkTheme:
         
         app.setPalette(dark_palette)
         app.setStyleSheet("""
+            QMainWindow {
+                background-color: #191919;
+                color: white;
+                border: 1px solid #333;
+            }
+            QWidget {
+                background-color: #191919;
+                color: white;
+            }
             QToolTip { 
                 color: #ffffff; 
                 background-color: #2a2a2a; 
                 border: 1px solid #767676; 
             }
+            QComboBox {
+                background-color: #232323;
+                color: white;
+                border: 1px solid #3a3a3a;
+                border-radius: 4px;
+                padding: 5px;
+                selection-background-color: #2a82da;
+            }
             QComboBox QAbstractItemView {
                 background-color: #191919;
                 color: white;
                 selection-background-color: #2a82da;
+                border: 1px solid #3a3a3a;
             }
             QComboBox::drop-down {
                 border: none;
                 background: #232323;
+                width: 20px;
             }
             QComboBox::down-arrow {
                 image: none;
-                border-left: 4px solid none;
-                border-right: 4px solid none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
                 border-top: 5px solid white;
-                border-bottom: 4px solid none;
+                border-bottom: 4px solid transparent;
             }
             QPushButton {
                 background-color: #2a2a2a;
+                color: white;
                 border: 1px solid #3a3a3a;
                 border-radius: 4px;
-                padding: 6px;
+                padding: 8px;
+                font-weight: bold;
             }
             QPushButton:hover {
                 background-color: #3a3a3a;
@@ -229,13 +254,23 @@ class DarkTheme:
             QPushButton:pressed {
                 background-color: #1a1a1a;
             }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666;
+            }
             QTextEdit {
                 background-color: #191919;
+                color: #e0e0e0;
                 border: 1px solid #3a3a3a;
                 border-radius: 4px;
-                color: #e0e0e0;
+                font-family: Consolas, 'Courier New', monospace;
             }
             QLabel {
+                color: #e0e0e0;
+                background-color: transparent;
+            }
+            QStatusBar {
+                background-color: #1a1a1a;
                 color: #e0e0e0;
             }
         """)
@@ -256,35 +291,63 @@ class SynapseInjectorGUI(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Synapse Injector")
-        self.setGeometry(300, 300, 700, 500)
+        self.setGeometry(300, 300, 800, 600)
+        
+        # Set window properties for dark title bar (Windows 10/11)
+        try:
+            if hasattr(ctypes.windll.dwmapi, 'DwmSetWindowAttribute'):
+                # Enable dark mode for title bar
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                value = ctypes.c_int(1)
+                hwnd = self.winId().__int__()
+                result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    ctypes.c_void_p(hwnd), DWMWA_USE_IMMERSIVE_DARK_MODE, 
+                    ctypes.byref(value), ctypes.sizeof(value)
+                )
+        except Exception as e:
+            print(f"Could not set dark title bar: {e}")
         
         central_widget = QWidget()
+        central_widget.setObjectName("centralWidget")
         self.setCentralWidget(central_widget)
         
         layout = QVBoxLayout(central_widget)
+        layout.setSpacing(10)
+        layout.setContentsMargins(15, 15, 15, 15)
         
         # Title
         title_label = QLabel("Synapse Injector")
         title_font = QFont()
-        title_font.setPointSize(16)
+        title_font.setPointSize(18)
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("""
+            QLabel {
+                color: #e0e0e0; 
+                background-color: transparent;
+                padding: 10px;
+                border-bottom: 2px solid #2a82da;
+            }
+        """)
         layout.addWidget(title_label)
         
         # Process selection
         process_layout = QHBoxLayout()
-        process_layout.addWidget(QLabel("Process:"))
+        process_label = QLabel("Target Process:")
+        process_label.setFixedWidth(100)
+        process_layout.addWidget(process_label)
         
         self.process_combo = QComboBox()
         self.process_combo.setEditable(True)
         self.process_combo.setInsertPolicy(QComboBox.NoInsert)
         self.process_combo.completer().setCompletionMode(QCompleter.PopupCompletion)
-        self.process_combo.setMinimumWidth(250)
+        self.process_combo.setMinimumWidth(300)
         process_layout.addWidget(self.process_combo)
         
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh_processes)
+        refresh_btn.setFixedWidth(80)
         process_layout.addWidget(refresh_btn)
         
         process_layout.addStretch()
@@ -292,7 +355,9 @@ class SynapseInjectorGUI(QMainWindow):
         
         # DLL selection
         dll_layout = QHBoxLayout()
-        dll_layout.addWidget(QLabel("DLL Path:"))
+        dll_label = QLabel("DLL Path:")
+        dll_label.setFixedWidth(100)
+        dll_layout.addWidget(dll_label)
         
         self.dll_combo = QComboBox()
         self.dll_combo.setEditable(True)
@@ -301,39 +366,73 @@ class SynapseInjectorGUI(QMainWindow):
         
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(self.browse_dll)
+        browse_btn.setFixedWidth(80)
         dll_layout.addWidget(browse_btn)
         
         dll_layout.addStretch()
         layout.addLayout(dll_layout)
         
         # Inject button
-        self.inject_btn = QPushButton("Inject DLL")
+        self.inject_btn = QPushButton("INJECT DLL")
         self.inject_btn.clicked.connect(self.inject)
-        self.inject_btn.setMinimumHeight(40)
+        self.inject_btn.setMinimumHeight(45)
+        self.inject_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a82da;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #3a92ea;
+            }
+            QPushButton:pressed {
+                background-color: #1a72ca;
+            }
+            QPushButton:disabled {
+                background-color: #1a1a1a;
+                color: #666;
+            }
+        """)
         layout.addWidget(self.inject_btn)
         
         # Console
-        layout.addWidget(QLabel("Console:"))
+        console_label = QLabel("Console Output:")
+        console_label.setFixedWidth(100)
+        layout.addWidget(console_label)
+        
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         layout.addWidget(self.console)
         
+        # Status bar
+        self.statusBar().showMessage("Ready")
+        
         self.log_message("Synapse Injector initialized. Ready to inject.")
     
     def refresh_processes(self):
-        self.processes = self.injector.get_processes()
-        current_text = self.process_combo.currentText()
-        
-        self.process_combo.clear()
-        process_names = sorted({p['name'] for p in self.processes}, key=lambda x: x.lower())
-        self.process_combo.addItems(process_names)
-        
-        # Try to restore the previous selection
-        index = self.process_combo.findText(current_text)
-        if index >= 0:
-            self.process_combo.setCurrentIndex(index)
-        else:
-            self.process_combo.setCurrentIndex(-1)
+        try:
+            self.processes = self.injector.get_processes()
+            current_text = self.process_combo.currentText()
+            
+            self.process_combo.blockSignals(True)
+            self.process_combo.clear()
+            process_names = sorted({p['name'] for p in self.processes}, key=lambda x: x.lower())
+            self.process_combo.addItems(process_names)
+            
+            # Try to restore the previous selection
+            index = self.process_combo.findText(current_text)
+            if index >= 0:
+                self.process_combo.setCurrentIndex(index)
+            else:
+                self.process_combo.setCurrentIndex(-1)
+            self.process_combo.blockSignals(False)
+            
+            self.statusBar().showMessage(f"Found {len(process_names)} processes")
+        except Exception as e:
+            self.log_message(f"Error refreshing processes: {e}")
     
     def browse_dll(self):
         from PyQt5.QtWidgets import QFileDialog
@@ -359,6 +458,7 @@ class SynapseInjectorGUI(QMainWindow):
             return
         
         self.log_message(f"Attempting to inject {dll_path} into {process_name}...")
+        self.statusBar().showMessage("Injecting...")
         self.inject_btn.setEnabled(False)
         QApplication.processEvents()  # Update UI
         
@@ -366,13 +466,16 @@ class SynapseInjectorGUI(QMainWindow):
         
         if success:
             self.log_message(f"SUCCESS: {message}")
+            self.statusBar().showMessage("Injection successful")
         else:
             self.log_message(f"ERROR: {message}")
+            self.statusBar().showMessage("Injection failed")
         
         self.inject_btn.setEnabled(True)
     
     def log_message(self, message):
-        timestamp = QApplication.instance().property("current_time") or ""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
         self.console.append(f"[{timestamp}] {message}")
         self.console.moveCursor(QTextCursor.End)
 
@@ -392,10 +495,6 @@ if __name__ == "__main__":
     
     app = QApplication(sys.argv)
     DarkTheme.apply(app)
-    
-    # Set a property to use for timestamps
-    from datetime import datetime
-    app.setProperty("current_time", datetime.now().strftime("%H:%M:%S"))
     
     window = SynapseInjectorGUI()
     window.show()
