@@ -6,7 +6,7 @@ import psutil
 from typing import List, Dict
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QTextEdit, QLabel, QCompleter, QStyleFactory, QLineEdit
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QPalette, QColor, QTextCursor, QIcon
+from PyQt5.QtGui import QFont, QPalette, QColor, QTextCursor
 
 # Windows API setup
 PROCESS_ALL_ACCESS = 0x1F0FFF
@@ -254,7 +254,6 @@ class SynapseInjectorGUI(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Synapse Injector")
-        self.setWindowIcon(QIcon('icon.ico'))
         self.setFixedSize(640, 480)
         
         try:
