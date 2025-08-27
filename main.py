@@ -254,7 +254,7 @@ class SynapseInjectorGUI(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Synapse Injector")
-        self.setFixedSize(800, 600)
+        self.setFixedSize(640, 480)
         
         try:
             if hasattr(ctypes.windll.dwmapi, 'DwmSetWindowAttribute'):
