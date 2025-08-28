@@ -18,12 +18,7 @@ Do not use this software to cheat in online games or tamper with applications yo
 
 Run the program as an **administrator**. Use the executable from the [**Releases**](https://github.com/brittojo7n/SynapseInjector/releases).
 
-> If you wish to run it manually from the python file make sure you have **python 3.8 or above** and follow the steps below to do so.
-
-### Python dependencies:
-```bash
-pip install -r requirements.txt
-```
+> If you wish to run it manually from the python file make sure you have **python 3.8 or above**.
 
 ### Run it Manually:
 ```bash
