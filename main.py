@@ -2,7 +2,6 @@ import sys
 import os
 import ctypes
 from ctypes import wintypes
-import psutil
 from typing import List, Dict
 import tkinter as tk
 from tkinter import ttk, filedialog, font
@@ -13,10 +12,30 @@ MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 PAGE_READWRITE = 0x04
 MEM_RELEASE = 0x8000
+TH32CS_SNAPPROCESS = 0x00000002
+MAX_PATH = 260
 
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
 
+class PROCESSENTRY32(ctypes.Structure):
+    _fields_ = [('dwSize', wintypes.DWORD),
+                ('cntUsage', wintypes.DWORD),
+                ('th32ProcessID', wintypes.DWORD),
+                ('th32DefaultHeapID', ctypes.POINTER(wintypes.ULONG)),
+                ('th32ModuleID', wintypes.DWORD),
+                ('cntThreads', wintypes.DWORD),
+                ('th32ParentProcessID', wintypes.DWORD),
+                ('pcPriClassBase', wintypes.LONG),
+                ('dwFlags', wintypes.DWORD),
+                ('szExeFile', ctypes.c_char * MAX_PATH)]
+
+kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+kernel32.Process32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32)]
+kernel32.Process32First.restype = wintypes.BOOL
+kernel32.Process32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32)]
+kernel32.Process32Next.restype = wintypes.BOOL
 kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 kernel32.OpenProcess.restype = wintypes.HANDLE
 kernel32.VirtualAllocEx.argtypes = [wintypes.HANDLE, wintypes.LPVOID, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD]
@@ -81,27 +100,65 @@ class DLLInjector:
 
     def get_processes(self) -> List[Dict]:
         processes = []
-        for proc in psutil.process_iter(['pid', 'name']):
+        h_snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if h_snapshot == -1:
+            return processes
+
+        pe32 = PROCESSENTRY32()
+        pe32.dwSize = ctypes.sizeof(PROCESSENTRY32)
+
+        if not kernel32.Process32First(h_snapshot, ctypes.byref(pe32)):
+            kernel32.CloseHandle(h_snapshot)
+            return processes
+
+        while True:
             try:
-                processes.append({'pid': proc.info['pid'], 'name': proc.info['name']})
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+                process_name = pe32.szExeFile.decode('utf-8', errors='ignore')
+            except Exception:
+                process_name = "unknown.exe"
+
+            processes.append({'pid': pe32.th32ProcessID, 'name': process_name})
+
+            if not kernel32.Process32Next(h_snapshot, ctypes.byref(pe32)):
+                break
+                
+        kernel32.CloseHandle(h_snapshot)
         return processes
+
+    def get_pid_by_name(self, process_name: str) -> int:
+        pid = 0
+        h_snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+        if h_snapshot == -1:
+            return pid
+
+        pe32 = PROCESSENTRY32()
+        pe32.dwSize = ctypes.sizeof(PROCESSENTRY32)
+
+        if not kernel32.Process32First(h_snapshot, ctypes.byref(pe32)):
+            kernel32.CloseHandle(h_snapshot)
+            return pid
+
+        while True:
+            try:
+                current_process_name = pe32.szExeFile.decode('utf-8', errors='ignore')
+                if current_process_name.lower() == process_name.lower():
+                    pid = pe32.th32ProcessID
+                    break
+            except Exception:
+                pass
+            
+            if not kernel32.Process32Next(h_snapshot, ctypes.byref(pe32)):
+                break
+        
+        kernel32.CloseHandle(h_snapshot)
+        return pid
 
     def inject_dll(self, process_name: str, dll_path: str) -> tuple[bool, str]:
         if not os.path.exists(dll_path):
             return False, f"DLL file not found: {dll_path}"
 
         dll_path = os.path.abspath(dll_path)
-
-        target_pid = None
-        for proc in psutil.process_iter(['pid', 'name']):
-            try:
-                if proc.info['name'].lower() == process_name.lower():
-                    target_pid = proc.info['pid']
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+        target_pid = self.get_pid_by_name(process_name)
 
         if not target_pid:
             return False, f"Process '{process_name}' not found"
