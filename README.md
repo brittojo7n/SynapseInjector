@@ -1,6 +1,6 @@
 # Synapse Injector
 
-A straightforward **Python DLL injection tool** using the Windows Native API with a PyQt5 interface.
+A straightforward **Python DLL injection tool** using the Windows Native API.
 
 ### Disclaimer
 This project is provided **for educational purposes only**.  
