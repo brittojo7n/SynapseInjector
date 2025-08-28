@@ -289,7 +289,7 @@ class SynapseInjectorGUI(tk.Tk):
         if not search_term:
             self.process_combo['values'] = self.all_process_names
         else:
-            filtered_list = [name for name in self.all_process_names if search_term in name.lower()]
+            filtered_list = [name for name in self.all_process_names if name.lower().startswith(search_term)]
             self.process_combo['values'] = filtered_list
 
     def browse_dll(self):
