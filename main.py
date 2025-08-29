@@ -223,9 +223,11 @@ class SynapseInjectorGUI(tk.Tk):
         self.setup_dpi_awareness()
         self.apply_light_theme()
         self.init_ui()
-        self.refresh_processes()
         
-        self.after(200, self.set_icon_from_exe)
+        self.update_idletasks()
+        self.set_icon_from_exe()
+        
+        self.refresh_processes()
 
     def setup_dpi_awareness(self):
         try:
