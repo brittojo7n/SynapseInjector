@@ -212,7 +212,7 @@ class SynapseInjectorGUI(tk.Tk):
         self.all_process_names = []
         
         self.setup_dpi_awareness()
-        self.apply_dark_theme()
+        self.apply_light_theme() # Changed to light theme
         self.init_ui()
         
         self.refresh_processes()
@@ -268,7 +268,7 @@ class SynapseInjectorGUI(tk.Tk):
         console_frame.grid_rowconfigure(0, weight=1)
         console_frame.grid_columnconfigure(0, weight=1)
         
-        self.console = tk.Text(console_frame, wrap=tk.WORD, bd=0, highlightthickness=0)
+        self.console = tk.Text(console_frame, wrap=tk.WORD, bd=0, highlightthickness=0, bg='#ffffff', fg='#000000')
         self.console.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
         
         console_scroll = ttk.Scrollbar(console_frame, orient="vertical", command=self.console.yview)
@@ -280,22 +280,14 @@ class SynapseInjectorGUI(tk.Tk):
         
         self.log_message("Synapse Injector initialized. Ready to inject.")
 
-    def apply_dark_theme(self):
-        try:
-            hwnd = self.winfo_id()
-            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-            value = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value))
-        except Exception:
-            pass
-
-        BG_COLOR = '#1e1e1e'
-        FG_COLOR = '#e0e0e0'
-        BORDER_COLOR = '#3a3a3a'
-        WIDGET_BG = '#2d2d2d'
-        WIDGET_FG = '#cccccc'
-        HIGHLIGHT_COLOR = '#2a82da'
-        ACCENT_COLOR = '#3a92ea'
+    def apply_light_theme(self):
+        # This function applies a standard light theme.
+        BG_COLOR = '#f0f0f0'
+        FG_COLOR = '#000000'
+        BORDER_COLOR = '#adadad'
+        WIDGET_BG = '#ffffff'
+        HIGHLIGHT_COLOR = '#0078d7'
+        ACCENT_COLOR = '#005499'  # A darker blue for active/hover states
         SELECT_BG = '#0078d7'
         STATUS_BG = '#0078d7'
 
@@ -305,26 +297,26 @@ class SynapseInjectorGUI(tk.Tk):
         style.configure('.', background=BG_COLOR, foreground=FG_COLOR, fieldbackground=WIDGET_BG, borderwidth=1, font=('Segoe UI', 10))
         style.configure('TFrame', background=BG_COLOR)
         style.configure('TLabel', background=BG_COLOR, foreground=FG_COLOR)
-        style.configure('TSeparator', background=HIGHLIGHT_COLOR)
+        style.configure('TSeparator', background=BORDER_COLOR)
         style.configure('Status.TLabel', background=STATUS_BG, foreground='white')
 
-        style.configure('TButton', background=WIDGET_BG, foreground=FG_COLOR, bordercolor=BORDER_COLOR, lightcolor=WIDGET_BG, darkcolor=WIDGET_BG)
-        style.map('TButton', background=[('active', BORDER_COLOR), ('pressed', WIDGET_BG)])
+        style.configure('TButton', background='#e1e1e1', foreground=FG_COLOR, bordercolor=BORDER_COLOR)
+        style.map('TButton', background=[('active', '#cccccc'), ('pressed', '#e1e1e1')])
 
         style.configure('Accent.TButton', font=('Segoe UI', 11, 'bold'), background=HIGHLIGHT_COLOR, foreground='white', borderwidth=0)
-        style.map('Accent.TButton', background=[('active', ACCENT_COLOR), ('disabled', '#404040')], foreground=[('disabled', '#808080')])
+        style.map('Accent.TButton', background=[('active', ACCENT_COLOR), ('disabled', '#d9d9d9')], foreground=[('disabled', '#a3a3a3')])
 
-        style.configure('TEntry', fieldbackground=WIDGET_BG, foreground=WIDGET_FG, bordercolor=BORDER_COLOR, insertcolor=FG_COLOR)
+        style.configure('TEntry', fieldbackground=WIDGET_BG, foreground=FG_COLOR, bordercolor=BORDER_COLOR, insertcolor=FG_COLOR)
         style.map('TEntry', bordercolor=[('focus', HIGHLIGHT_COLOR)])
         
-        style.configure('TCombobox', fieldbackground=WIDGET_BG, foreground=WIDGET_FG, bordercolor=BORDER_COLOR, arrowcolor=FG_COLOR, selectbackground=SELECT_BG, selectforeground='white')
-        style.map('TCombobox', bordercolor=[('focus', HIGHLIGHT_COLOR)], fieldbackground=[('readonly', WIDGET_BG)])
+        style.configure('TCombobox', fieldbackground=WIDGET_BG, foreground=FG_COLOR, bordercolor=BORDER_COLOR, arrowcolor=FG_COLOR, selectbackground=SELECT_BG, selectforeground='white')
+        style.map('TCombobox', bordercolor=[('focus', HIGHLIGHT_COLOR)])
         self.option_add('*TCombobox*Listbox.background', WIDGET_BG)
-        self.option_add('*TCombobox*Listbox.foreground', WIDGET_FG)
+        self.option_add('*TCombobox*Listbox.foreground', FG_COLOR)
         self.option_add('*TCombobox*Listbox.selectBackground', SELECT_BG)
         self.option_add('*TCombobox*Listbox.selectForeground', 'white')
 
-        style.configure('TScrollbar', troughcolor=BG_COLOR, background=WIDGET_BG, bordercolor=BG_COLOR, arrowcolor=FG_COLOR)
+        style.configure('TScrollbar', troughcolor=BG_COLOR, background='#e1e1e1', bordercolor=BG_COLOR, arrowcolor=FG_COLOR)
         style.map('TScrollbar', background=[('active', BORDER_COLOR)])
 
         self.configure(bg=BG_COLOR)
@@ -335,7 +327,7 @@ class SynapseInjectorGUI(tk.Tk):
             self.processes = self.injector.get_processes()
             self.all_process_names = sorted({p['name'] for p in self.processes}, key=str.lower)
             self.filter_processes()
-            self.status_bar.config(text=f"Found {len(self.all_process_names)} processes")
+            self.status_bar.config(text=f"Found {len(self.all_process_names)} unique processes")
         except Exception as e:
             self.log_message(f"Error refreshing processes: {e}")
         finally:
@@ -366,7 +358,7 @@ class SynapseInjectorGUI(tk.Tk):
             self.log_message("Error: Please specify a DLL path.")
             return
         
-        self.log_message(f"Attempting to inject {dll_path} into {process_name}...")
+        self.log_message(f"Attempting to inject {os.path.basename(dll_path)} into {process_name}...")
         self.status_bar.config(text="Injecting...")
         self.inject_btn.config(state="disabled")
         self.update_idletasks()
