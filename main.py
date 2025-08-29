@@ -18,6 +18,8 @@ MAX_PATH = 260
 kernel32 = ctypes.windll.kernel32
 user32 = ctypes.windll.user32
 
+wintypes.LRESULT = wintypes.LPARAM
+
 class PROCESSENTRY32(ctypes.Structure):
     _fields_ = [('dwSize', wintypes.DWORD),
                 ('cntUsage', wintypes.DWORD),
@@ -54,6 +56,13 @@ kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 kernel32.CloseHandle.restype = wintypes.BOOL
 kernel32.VirtualFreeEx.argtypes = [wintypes.HANDLE, wintypes.LPVOID, ctypes.c_size_t, wintypes.DWORD]
 kernel32.VirtualFreeEx.restype = wintypes.BOOL
+
+user32.GetParent.argtypes = [wintypes.HWND]
+user32.GetParent.restype = wintypes.HWND
+user32.LoadIconA.argtypes = [wintypes.HINSTANCE, wintypes.LPCSTR]
+user32.LoadIconA.restype = wintypes.HICON
+user32.SendMessageA.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.SendMessageA.restype = wintypes.LRESULT
 
 class DLLInjector:
     def __init__(self):
@@ -212,11 +221,12 @@ class SynapseInjectorGUI(tk.Tk):
         self.all_process_names = []
         
         self.setup_dpi_awareness()
-        self.apply_light_theme() # Changed to light theme
+        self.apply_light_theme()
         self.init_ui()
-        
         self.refresh_processes()
         
+        self.after(200, self.set_icon_from_exe)
+
     def setup_dpi_awareness(self):
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(2) 
@@ -281,13 +291,12 @@ class SynapseInjectorGUI(tk.Tk):
         self.log_message("Synapse Injector initialized. Ready to inject.")
 
     def apply_light_theme(self):
-        # This function applies a standard light theme.
         BG_COLOR = '#f0f0f0'
         FG_COLOR = '#000000'
         BORDER_COLOR = '#adadad'
         WIDGET_BG = '#ffffff'
         HIGHLIGHT_COLOR = '#0078d7'
-        ACCENT_COLOR = '#005499'  # A darker blue for active/hover states
+        ACCENT_COLOR = '#005499'
         SELECT_BG = '#0078d7'
         STATUS_BG = '#0078d7'
 
@@ -321,6 +330,26 @@ class SynapseInjectorGUI(tk.Tk):
 
         self.configure(bg=BG_COLOR)
         style.configure('Console.TFrame', background=BORDER_COLOR)
+
+    def set_icon_from_exe(self):
+        try:
+            WM_SETICON = 0x0080
+            ICON_SMALL = 0
+            ICON_BIG = 1
+            
+            hwnd = self.winfo_id()
+            parent_hwnd = user32.GetParent(hwnd)
+            h_instance = kernel32.GetModuleHandleA(None)
+            
+            icon_id = wintypes.LPCSTR(1)
+            h_icon = user32.LoadIconA(h_instance, icon_id)
+
+            if h_icon:
+                user32.SendMessageA(parent_hwnd, WM_SETICON, ICON_SMALL, h_icon)
+                user32.SendMessageA(parent_hwnd, WM_SETICON, ICON_BIG, h_icon)
+        except Exception as e:
+            print(f"Could not set icon from exe: {e}")
+            pass
 
     def refresh_processes(self):
         try:
