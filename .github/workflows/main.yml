@@ -27,4 +27,4 @@ jobs:
       with:
         name: Injector-Executable
         # FIX: Added the subfolder path to the output directory
-        path: YourProjectName/x64/Release/*.exe
+        path: SynapseInjector/x64/Release/*.exe
