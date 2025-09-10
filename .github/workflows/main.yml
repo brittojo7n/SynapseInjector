@@ -19,10 +19,12 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Build the application
-      run: msbuild SynapseInjector.vcxproj /p:Configuration=Release /p:Platform=x64
+      # FIX: Added the subfolder path to the vcxproj file
+      run: msbuild SynapseInjector/SynapseInjector.vcxproj /p:Configuration=Release /p:Platform=x64
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
       with:
         name: Injector-Executable
-        path: x64/Release/*.exe
+        # FIX: Added the subfolder path to the output directory
+        path: YourProjectName/x64/Release/*.exe
