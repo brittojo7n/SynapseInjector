@@ -3,6 +3,8 @@ name: SynapseInjector Build
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -19,12 +21,10 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Build the application
-      # FIX: Added the subfolder path to the vcxproj file
       run: msbuild SynapseInjector/SynapseInjector.vcxproj /p:Configuration=Release /p:Platform=x64
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v4
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
       with:
-        name: Injector-Executable
-        # FIX: Added the subfolder path to the output directory
-        path: SynapseInjector/x64/Release/*.exe
+        files: SynapseInjector/x64/Release/SynapseInjector.exe
