@@ -1,15 +1,24 @@
-.env
-.venv/
-venv/
-.env/
-env/
-myenv/
-__pycache__/
-*.pyc
-.vscode/
-.idea/
-dist/
+# Visual Studio
+.vs/
+*.VC.db
+*.suo
+*.user
+*.vcxproj.user
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+Win32/
 build/
-*.spec
-upx/
-*.exe
+[Bb]in/
+[Oo]bj/
+
+# Other
+*.ipch
+*.aps
+*.opensdf
+*.sdf
+*.tlog
+*.log
