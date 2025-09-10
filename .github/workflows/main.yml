@@ -1,8 +1,9 @@
-name: SynapseInjector Build
+name: SynapseInjector Build and Release
 
 on:
   push:
     branches: [ "main" ]
+    # This is the key trigger for your release
     tags:
       - 'v*'
   pull_request:
@@ -10,7 +11,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build_and_release: # Combined the job name for clarity
+    name: Build and Release
     runs-on: windows-latest
 
     steps:
@@ -23,8 +25,12 @@ jobs:
     - name: Build the application
       run: msbuild SynapseInjector/SynapseInjector.vcxproj /p:Configuration=Release /p:Platform=x64
 
+    # This step will only run when you push a tag like v1.0, v1.1.0, etc.
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
+        # This will automatically create a release body with a changelog
+        generate_release_notes: true
+        # This points to the file you want to upload as a release asset
         files: SynapseInjector/x64/Release/SynapseInjector.exe
