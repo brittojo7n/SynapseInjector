@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <set>
+#include <chrono>
 #include "Injector.h"
 
 // Link required libraries
@@ -22,9 +23,13 @@
 #define IDC_CONSOLE_EDIT 106
 #define IDC_STATUS_BAR 107
 #define ID_TIMER_REFRESH 108
+#define IDC_DELAY_CHECK 109
+#define IDC_DELAY_EDIT 110
+#define ID_TIMER_INJECT 111
 
 // Global Handles and State
 HWND g_hProcessCombo, g_hDllPathEdit, g_hInjectBtn, g_hConsole, g_hStatusBar;
+HWND g_hDelayCheck, g_hDelayEdit, g_hRefreshBtn, g_hBrowseBtn;
 HFONT g_hFont = NULL;
 static std::vector<std::wstring> g_allProcessNames;
 
@@ -35,6 +40,7 @@ void AddLogMessage(const std::wstring& msg);
 void PopulateProcessList();
 void ApplyProcessFilter();
 void OnDpiChanged(HWND hwnd, int newDpi);
+void PerformInjection(HWND hwnd);
 
 // Main Entry Point
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
@@ -85,8 +91,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return static_cast<int>(Msg.wParam);
 }
 
-
-// UI Creation and Layout Logic - with corrected scaling
+// UI Creation and Layout Logic
 void CreateLayout(HWND hwnd, int dpi) {
     if (g_hFont) DeleteObject(g_hFont);
 
@@ -95,7 +100,6 @@ void CreateLayout(HWND hwnd, int dpi) {
     g_hFont = CreateFontW(MulDiv(-12, dpi, 96), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, L"Segoe UI");
 
-    // --- FIX: Get REAL font metrics instead of approximating ---
     HDC hdc = GetDC(hwnd);
     HFONT hOldFont = (HFONT)SelectObject(hdc, g_hFont);
     TEXTMETRIC tm;
@@ -105,33 +109,31 @@ void CreateLayout(HWND hwnd, int dpi) {
 
     const int fontHeight = tm.tmHeight;
     const int avgCharWidth = tm.tmAveCharWidth;
-    // --- End of Fix ---
 
-    // Define layout constants based on the new, accurate metrics
     const int margin = avgCharWidth * 3;
     const int padding = avgCharWidth;
-    const int controlHeight = fontHeight + padding; // Ensures controls are tall enough
+    const int controlHeight = fontHeight + padding;
     const int buttonWidth = avgCharWidth * 16;
     const int labelWidth = avgCharWidth * 18;
     const int ySpacing = fontHeight / 2;
     int currentY = margin;
 
-    const int clientWidth = avgCharWidth * 100;
+    const int clientWidth = avgCharWidth * 80;
 
     EnumChildWindows(hwnd, [](HWND child, LPARAM) { DestroyWindow(child); return TRUE; }, 0);
+
+    int controlX = margin + labelWidth + padding;
+    int controlWidth = clientWidth - controlX - margin - buttonWidth - padding;
 
     // --- Row 1: Process Selection ---
     CreateWindow(L"STATIC", L"Target Process:", WS_VISIBLE | WS_CHILD | SS_RIGHT,
         margin, currentY + padding / 2, labelWidth, controlHeight, hwnd, NULL, NULL, NULL);
 
-    int controlX = margin + labelWidth + padding;
-    int controlWidth = clientWidth - controlX - margin - buttonWidth - padding;
     g_hProcessCombo = CreateWindow(WC_COMBOBOX, L"", CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_VISIBLE | WS_CHILD | WS_TABSTOP,
         controlX, currentY, controlWidth, controlHeight * 10, hwnd, (HMENU)IDC_PROCESS_COMBO, NULL, NULL);
 
-    CreateWindow(WC_BUTTON, L"Refresh", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
+    g_hRefreshBtn = CreateWindow(WC_BUTTON, L"Refresh", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
         controlX + controlWidth + padding, currentY, buttonWidth, controlHeight, hwnd, (HMENU)IDC_REFRESH_BTN, NULL, NULL);
-
     currentY += controlHeight + ySpacing;
 
     // --- Row 2: DLL Path ---
@@ -141,22 +143,32 @@ void CreateLayout(HWND hwnd, int dpi) {
     g_hDllPathEdit = CreateWindow(WC_EDIT, L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP,
         controlX, currentY, controlWidth, controlHeight, hwnd, (HMENU)IDC_DLL_PATH_EDIT, NULL, NULL);
 
-    CreateWindow(WC_BUTTON, L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
+    g_hBrowseBtn = CreateWindow(WC_BUTTON, L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
         controlX + controlWidth + padding, currentY, buttonWidth, controlHeight, hwnd, (HMENU)IDC_BROWSE_BTN, NULL, NULL);
+    currentY += controlHeight + ySpacing;
+
+    // --- Row 3: Injection Delay ---
+    g_hDelayCheck = CreateWindow(WC_BUTTON, L"Delay Injection:", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
+        margin, currentY + padding / 2, labelWidth, controlHeight, hwnd, (HMENU)IDC_DELAY_CHECK, NULL, NULL);
+
+    g_hDelayEdit = CreateWindow(WC_EDIT, L"1000", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP | WS_DISABLED,
+        controlX, currentY, controlWidth, controlHeight, hwnd, (HMENU)IDC_DELAY_EDIT, NULL, NULL);
+
+    CreateWindow(L"STATIC", L"ms", WS_VISIBLE | WS_CHILD | SS_LEFT,
+        controlX + controlWidth + padding, currentY + padding / 2, buttonWidth, controlHeight, hwnd, NULL, NULL, NULL);
 
     currentY += controlHeight + margin;
 
-    // --- Row 3: Inject Button ---
+
+    // --- Row 4: Inject Button ---
     g_hInjectBtn = CreateWindow(WC_BUTTON, L"INJECT", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
         margin, currentY, clientWidth - margin * 2, controlHeight + padding, hwnd, (HMENU)IDC_INJECT_BTN, NULL, NULL);
-
     currentY += controlHeight + padding + ySpacing;
 
-    // --- Row 4: Console Output ---
-    int consoleHeight = fontHeight * 10;
+    // --- Row 5: Console Output ---
+    int consoleHeight = fontHeight * 12;
     g_hConsole = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, L"", WS_VISIBLE | WS_CHILD | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
         margin, currentY, clientWidth - margin * 2, consoleHeight, hwnd, (HMENU)IDC_CONSOLE_EDIT, NULL, NULL);
-
     currentY += consoleHeight;
 
     // --- Finalize Layout ---
@@ -181,14 +193,11 @@ void CreateLayout(HWND hwnd, int dpi) {
 
 void OnDpiChanged(HWND hwnd, int newDpi) {
     CreateLayout(hwnd, newDpi);
-    // After recreating the layout, which sets its own ideal size,
-    // we need to center the newly resized window.
     RECT rcWindow;
     GetWindowRect(hwnd, &rcWindow);
     int width = rcWindow.right - rcWindow.left;
     int height = rcWindow.bottom - rcWindow.top;
 
-    // Get monitor info for the current cursor position
     POINT pt;
     GetCursorPos(&pt);
     HMONITOR hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
@@ -201,13 +210,63 @@ void OnDpiChanged(HWND hwnd, int newDpi) {
     SetWindowPos(hwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+void PerformInjection(HWND hwnd) {
+    wchar_t processName[MAX_PATH], dllPath[MAX_PATH];
+    GetWindowText(g_hProcessCombo, processName, MAX_PATH);
+    GetWindowText(g_hDllPathEdit, dllPath, MAX_PATH);
+
+    std::wstring dllName = dllPath;
+    size_t pos = dllName.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) dllName = dllName.substr(pos + 1);
+
+    AddLogMessage(L"Attempting to inject " + dllName + L" into " + processName + L"...");
+    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Injecting...");
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    bool success = false;
+    std::wstring resultMessage;
+
+    try {
+        DWORD pid = Injector::GetProcessIdByName(processName);
+        if (pid == 0) throw std::runtime_error("Process not found.");
+        Injector::Inject(pid, dllPath);
+        resultMessage = L"SUCCESS: Injected into " + std::wstring(processName) + L" (PID: " + std::to_wstring(pid) + L")";
+        success = true;
+    }
+    catch (const std::runtime_error& e) {
+        std::string errorMsg = e.what();
+        std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end());
+        resultMessage = L"ERROR: " + wErrorMsg;
+        success = false;
+    }
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> elapsedTime = endTime - startTime;
+
+    resultMessage += L". Execution time: " + std::to_wstring(elapsedTime.count()) + L" ms.";
+
+    AddLogMessage(resultMessage);
+    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)(success ? L"Injection successful." : L"Injection failed."));
+
+    // Re-enable controls
+    EnableWindow(g_hInjectBtn, TRUE);
+    EnableWindow(g_hProcessCombo, TRUE);
+    EnableWindow(g_hDllPathEdit, TRUE);
+    EnableWindow(g_hBrowseBtn, TRUE);
+    EnableWindow(g_hRefreshBtn, TRUE);
+    EnableWindow(g_hDelayCheck, TRUE);
+    if (SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+        EnableWindow(g_hDelayEdit, TRUE);
+    }
+}
+
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
         int dpi = GetDpiForWindow(hwnd);
         CreateLayout(hwnd, dpi);
-        OnDpiChanged(hwnd, dpi); // Center the initial window
+        OnDpiChanged(hwnd, dpi);
         PopulateProcessList();
         SetTimer(hwnd, ID_TIMER_REFRESH, 5000, NULL);
         AddLogMessage(L"Synapse Injector initialized. Ready to inject.");
@@ -229,6 +288,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case IDC_REFRESH_BTN:
             PopulateProcessList();
             break;
+
+        case IDC_DELAY_CHECK: {
+            LRESULT checked = SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0);
+            EnableWindow(g_hDelayEdit, (checked == BST_CHECKED));
+            break;
+        }
 
         case IDC_BROWSE_BTN: {
             wchar_t filePath[MAX_PATH] = { 0 };
@@ -256,28 +321,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 break;
             }
 
-            std::wstring dllName = dllPath;
-            size_t pos = dllName.find_last_of(L"\\/");
-            if (pos != std::wstring::npos) dllName = dllName.substr(pos + 1);
-
-            AddLogMessage(L"Attempting to inject " + dllName + L" into " + processName + L"...");
-            SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Injecting...");
             EnableWindow(g_hInjectBtn, FALSE);
 
-            try {
-                DWORD pid = Injector::GetProcessIdByName(processName);
-                if (pid == 0) throw std::runtime_error("Process not found.");
-                Injector::Inject(pid, dllPath);
-                AddLogMessage(L"SUCCESS: Injected into " + std::wstring(processName) + L" (PID: " + std::to_wstring(pid) + L")");
-                SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Injection successful.");
+            LRESULT checked = SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0);
+            if (checked == BST_CHECKED) {
+                wchar_t delayText[16];
+                GetWindowText(g_hDelayEdit, delayText, 16);
+                int delayMs = _wtoi(delayText);
+
+                if (delayMs > 0) {
+                    AddLogMessage(L"Injection scheduled in " + std::to_wstring(delayMs) + L" ms...");
+                    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Waiting for timer...");
+                    EnableWindow(g_hProcessCombo, FALSE);
+                    EnableWindow(g_hDllPathEdit, FALSE);
+                    EnableWindow(g_hBrowseBtn, FALSE);
+                    EnableWindow(g_hRefreshBtn, FALSE);
+                    EnableWindow(g_hDelayCheck, FALSE);
+                    EnableWindow(g_hDelayEdit, FALSE);
+
+                    SetTimer(hwnd, ID_TIMER_INJECT, delayMs, NULL);
+                }
+                else {
+                    AddLogMessage(L"Error: Invalid delay specified. Performing injection immediately.");
+                    PerformInjection(hwnd);
+                }
             }
-            catch (const std::runtime_error& e) {
-                std::string errorMsg = e.what();
-                std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end());
-                AddLogMessage(L"ERROR: " + wErrorMsg);
-                SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Injection failed.");
+            else {
+                PerformInjection(hwnd);
             }
-            EnableWindow(g_hInjectBtn, TRUE);
             break;
         }
         }
@@ -285,7 +356,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_TIMER:
-        if (wParam == ID_TIMER_REFRESH) PopulateProcessList();
+        if (wParam == ID_TIMER_REFRESH) {
+            PopulateProcessList();
+        }
+        else if (wParam == ID_TIMER_INJECT) {
+            KillTimer(hwnd, ID_TIMER_INJECT);
+            PerformInjection(hwnd);
+        }
         break;
 
     case WM_DESTROY: {
@@ -354,3 +431,4 @@ void PopulateProcessList() {
     wsprintf(statusText, L"Found %lu unique processes", static_cast<unsigned long>(g_allProcessNames.size()));
     SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)statusText);
 }
+
