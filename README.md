@@ -11,6 +11,6 @@ To compile the project, you need **Visual Studio** with the "Desktop development
     ```sh
     msbuild SynapseInjector/SynapseInjector.vcxproj /p:Configuration=Release /p:Platform=x64
     ```
-3.  The compiled `SynapseInjector.exe` will be located in the `SynapseInjector/x64/Release/` direct**ory.
+3.  The compiled `SynapseInjector.exe` will be located in the `SynapseInjector/x64/Release/` directory.
 
 **NOTE:** The antivirus may flag it as a virus since computer viruses use similar program to inject code into system processes and infect the system. Make sure to disable or even create an exception for the long run.
