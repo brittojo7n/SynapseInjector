@@ -1,6 +1,7 @@
 #include "Injector.h"
 #include <tlhelp32.h>
-#include <algorithm> // For std::transform
+#include <algorithm>
+#include <memory>
 
 bool Injector::EnableDebugPrivilege() {
     HANDLE hToken;
@@ -81,50 +82,38 @@ void Injector::Inject(DWORD processId, const std::wstring& dllPath) {
         throw std::runtime_error("DLL file not found.");
     }
 
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+    auto processDeleter = [](HANDLE h) { if (h) CloseHandle(h); };
+    std::unique_ptr<void, decltype(processDeleter)> hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId), processDeleter);
+
     if (!hProcess) {
         throw std::runtime_error("Failed to open target process. Error: " + std::to_string(GetLastError()));
     }
 
-    // RAII approach would be better, but for a direct translation, manual cleanup is shown.
-    LPVOID pAllocatedMem = nullptr;
-    HANDLE hRemoteThread = nullptr;
+    size_t dllPathSize = (dllPath.length() + 1) * sizeof(wchar_t);
 
-    try {
-        size_t dllPathSize = (dllPath.length() + 1) * sizeof(wchar_t);
-        pAllocatedMem = VirtualAllocEx(hProcess, NULL, dllPathSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!pAllocatedMem) {
-            throw std::runtime_error("Failed to allocate memory in target process. Error: " + std::to_string(GetLastError()));
-        }
+    auto virtualFreeDeleter = [&](LPVOID p) { if (p) VirtualFreeEx(hProcess.get(), p, 0, MEM_RELEASE); };
+    std::unique_ptr<void, decltype(virtualFreeDeleter)> pAllocatedMem(VirtualAllocEx(hProcess.get(), NULL, dllPathSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), virtualFreeDeleter);
 
-        if (!WriteProcessMemory(hProcess, pAllocatedMem, dllPath.c_str(), dllPathSize, NULL)) {
-            throw std::runtime_error("Failed to write to process memory. Error: " + std::to_string(GetLastError()));
-        }
-
-        HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
-        FARPROC pLoadLibrary = GetProcAddress(hKernel32, "LoadLibraryW");
-        if (!pLoadLibrary) {
-            throw std::runtime_error("Failed to get LoadLibraryW address.");
-        }
-
-        hRemoteThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)pLoadLibrary, pAllocatedMem, 0, NULL);
-        if (!hRemoteThread) {
-            throw std::runtime_error("Failed to create remote thread. Error: " + std::to_string(GetLastError()));
-        }
-
-        WaitForSingleObject(hRemoteThread, 5000); // Wait 5 seconds
-
-    }
-    catch (...) {
-        // Cleanup on error
-        if (pAllocatedMem) VirtualFreeEx(hProcess, pAllocatedMem, 0, MEM_RELEASE);
-        if (hRemoteThread) CloseHandle(hRemoteThread);
-        CloseHandle(hProcess);
-        throw; // Re-throw the exception
+    if (!pAllocatedMem) {
+        throw std::runtime_error("Failed to allocate memory in target process. Error: " + std::to_string(GetLastError()));
     }
 
-    // Cleanup on success
-    VirtualFreeEx(hProcess, pAllocatedMem, 0, MEM_RELEASE);
-    CloseHandle(hRemoteThread);
-    CloseHandle(hProcess);
+    if (!WriteProcessMemory(hProcess.get(), pAllocatedMem.get(), dllPath.c_str(), dllPathSize, NULL)) {
+        throw std::runtime_error("Failed to write to process memory. Error: " + std::to_string(GetLastError()));
+    }
+
+    HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
+    FARPROC pLoadLibrary = GetProcAddress(hKernel32, "LoadLibraryW");
+    if (!pLoadLibrary) {
+        throw std::runtime_error("Failed to get LoadLibraryW address.");
+    }
+
+    auto threadDeleter = [](HANDLE h) { if (h) CloseHandle(h); };
+    std::unique_ptr<void, decltype(threadDeleter)> hRemoteThread(CreateRemoteThread(hProcess.get(), NULL, 0, (LPTHREAD_START_ROUTINE)pLoadLibrary, pAllocatedMem.get(), 0, NULL), threadDeleter);
+
+    if (!hRemoteThread) {
+        throw std::runtime_error("Failed to create remote thread. Error: " + std::to_string(GetLastError()));
+    }
+
+    WaitForSingleObject(hRemoteThread.get(), 5000);
 }

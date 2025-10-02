@@ -418,17 +418,18 @@ void ApplyProcessFilter() {
 void PopulateProcessList() {
     std::vector<ProcessInfo> processes = Injector::GetAllProcesses();
 
-    std::set<std::wstring> uniqueNames;
+    g_allProcessNames.clear();
     for (const auto& p : processes) {
-        if (p.name.length() > 0) uniqueNames.insert(p.name);
+        if (p.name.length() > 0) {
+            g_allProcessNames.push_back(p.name);
+        }
     }
 
-    g_allProcessNames.assign(uniqueNames.begin(), uniqueNames.end());
+    std::sort(g_allProcessNames.begin(), g_allProcessNames.end());
+    g_allProcessNames.erase(std::unique(g_allProcessNames.begin(), g_allProcessNames.end()), g_allProcessNames.end());
 
     ApplyProcessFilter();
 
-    wchar_t statusText[100];
-    wsprintf(statusText, L"Found %lu unique processes", static_cast<unsigned long>(g_allProcessNames.size()));
-    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)statusText);
+    std::wstring statusText = L"Found " + std::to_wstring(g_allProcessNames.size()) + L" unique processes";
+    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)statusText.c_str());
 }
-
