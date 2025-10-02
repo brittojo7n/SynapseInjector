@@ -14,3 +14,9 @@ To compile the project, you need **Visual Studio** with the "Desktop development
 3.  The compiled `SynapseInjector.exe` will be located in the `SynapseInjector/x64/Release/` directory.
 
 **NOTE:** The antivirus may flag it as a virus since computer viruses use similar program to inject code into system processes and infect the system. Make sure to disable or even create an exception for the long run.
+
+<div align="center">
+  <a href="https://github.com/brittojo7n" target="_blank">
+    <img src="https://img.shields.io/badge/Made%20by-Britto-1f425f.svg?style=for-the-badge&logo=github" alt="Author Badge"/>
+  </a>
+</div>
