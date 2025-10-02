@@ -3,12 +3,7 @@
 This repository contains the source code for **SynapseInjector**, a lightweight command-line utility for injecting DLLs into running processes on Windows.
 <div align="center">
   <a href="https://github.com/brittojo7n/SynapseInjector" target="_blank">
-    <img src="https://img.shields.io/badge/SynapseInjector-5C2D91.svg?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="SynapseInjector Project Badge" />
-  </a>
-</div>
-<div align="center">
-  <a href="https://github.com/brittojo7n" target="_blank">
-    <img src="https://img.shields.io/badge/Made%20by-Britto-35b393.svg?style=for-the-badge&logo=github" alt="Author Badge"/>
+    <img src="https://img.shields.io/badge/Synapse%20Injector-Made%20By%20Britto-5C2D91.svg?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="SynapseInjector Project Badge" />
   </a>
 </div>
 
