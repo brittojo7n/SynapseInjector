@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <set>
 #include <chrono>
 #include "Injector.h"
 #include "SynapseInjector.h"
