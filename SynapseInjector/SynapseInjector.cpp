@@ -185,6 +185,7 @@ void CreateLayout(HWND hwnd, int dpi) {
         }, (LPARAM)g_hFont);
 
     SetWindowText(g_hDllPathEdit, LoadLastDllPath().c_str());
+    EnableWindow(g_hEjectBtn, FALSE);
 }
 
 void OnDpiChanged(HWND hwnd, int newDpi) {
@@ -248,7 +249,6 @@ void PerformInjection(HWND hwnd) {
     SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)(success ? L"Injection successful." : L"Injection failed."));
 
     EnableWindow(g_hInjectBtn, TRUE);
-    EnableWindow(g_hEjectBtn, TRUE);
     EnableWindow(g_hProcessCombo, TRUE);
     EnableWindow(g_hDllPathEdit, TRUE);
     EnableWindow(g_hBrowseBtn, TRUE);
@@ -256,6 +256,9 @@ void PerformInjection(HWND hwnd) {
     EnableWindow(g_hDelayCheck, TRUE);
     if (SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0) == BST_CHECKED) {
         EnableWindow(g_hDelayEdit, TRUE);
+    }
+    if (success) {
+        EnableWindow(g_hEjectBtn, TRUE);
     }
 }
 
@@ -293,7 +296,12 @@ void PerformEjection(HWND hwnd) {
     AddLogMessage(resultMessage);
     SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)(success ? L"Ejection successful." : L"Ejection failed."));
     EnableWindow(g_hInjectBtn, TRUE);
-    EnableWindow(g_hEjectBtn, TRUE);
+    if (success) {
+        EnableWindow(g_hEjectBtn, FALSE);
+    }
+    else {
+        EnableWindow(g_hEjectBtn, TRUE);
+    }
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
