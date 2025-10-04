@@ -24,8 +24,9 @@
 #define IDC_DELAY_CHECK 109
 #define IDC_DELAY_EDIT 110
 #define ID_TIMER_INJECT 111
+#define IDC_EJECT_BTN 112
 
-HWND g_hProcessCombo, g_hDllPathEdit, g_hInjectBtn, g_hConsole, g_hStatusBar;
+HWND g_hProcessCombo, g_hDllPathEdit, g_hInjectBtn, g_hEjectBtn, g_hConsole, g_hStatusBar;
 HWND g_hDelayCheck, g_hDelayEdit, g_hRefreshBtn, g_hBrowseBtn;
 HFONT g_hFont = NULL;
 static std::vector<std::wstring> g_allProcessNames;
@@ -37,6 +38,9 @@ void PopulateProcessList();
 void ApplyProcessFilter();
 void OnDpiChanged(HWND hwnd, int newDpi);
 void PerformInjection(HWND hwnd);
+void PerformEjection(HWND hwnd);
+void SaveLastDllPath(const std::wstring& path);
+std::wstring LoadLastDllPath();
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -139,7 +143,7 @@ void CreateLayout(HWND hwnd, int dpi) {
         controlX + controlWidth + padding, currentY, buttonWidth, controlHeight, hwnd, (HMENU)IDC_BROWSE_BTN, NULL, NULL);
     currentY += controlHeight + ySpacing;
 
-    g_hDelayCheck = CreateWindow(WC_BUTTON, L"Delay Injection:", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
+    g_hDelayCheck = CreateWindow(WC_BUTTON, L"Delay Action:", WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX | WS_TABSTOP,
         margin, currentY + padding / 2, labelWidth, controlHeight, hwnd, (HMENU)IDC_DELAY_CHECK, NULL, NULL);
 
     g_hDelayEdit = CreateWindow(WC_EDIT, L"1000", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP | WS_DISABLED,
@@ -150,8 +154,12 @@ void CreateLayout(HWND hwnd, int dpi) {
 
     currentY += controlHeight + margin;
 
+    int injectButtonWidth = (clientWidth - margin * 3 - padding) / 2;
     g_hInjectBtn = CreateWindow(WC_BUTTON, L"INJECT", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
-        margin, currentY, clientWidth - margin * 2, controlHeight + padding, hwnd, (HMENU)IDC_INJECT_BTN, NULL, NULL);
+        margin, currentY, injectButtonWidth, controlHeight + padding, hwnd, (HMENU)IDC_INJECT_BTN, NULL, NULL);
+
+    g_hEjectBtn = CreateWindow(WC_BUTTON, L"EJECT", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_TABSTOP,
+        margin + injectButtonWidth + padding, currentY, injectButtonWidth, controlHeight + padding, hwnd, (HMENU)IDC_EJECT_BTN, NULL, NULL);
     currentY += controlHeight + padding + ySpacing;
 
     int consoleHeight = fontHeight * 12;
@@ -175,6 +183,8 @@ void CreateLayout(HWND hwnd, int dpi) {
         SendMessage(child, WM_SETFONT, (WPARAM)font, TRUE);
         return TRUE;
         }, (LPARAM)g_hFont);
+
+    SetWindowText(g_hDllPathEdit, LoadLastDllPath().c_str());
 }
 
 void OnDpiChanged(HWND hwnd, int newDpi) {
@@ -197,9 +207,12 @@ void OnDpiChanged(HWND hwnd, int newDpi) {
 }
 
 void PerformInjection(HWND hwnd) {
-    wchar_t processName[MAX_PATH], dllPath[MAX_PATH];
-    GetWindowText(g_hProcessCombo, processName, MAX_PATH);
+    wchar_t processInfo[MAX_PATH], dllPath[MAX_PATH];
+    GetWindowText(g_hProcessCombo, processInfo, MAX_PATH);
     GetWindowText(g_hDllPathEdit, dllPath, MAX_PATH);
+
+    std::wstring processInfoStr = processInfo;
+    std::wstring processName = processInfoStr.substr(0, processInfoStr.find(L" (PID:"));
 
     std::wstring dllName = dllPath;
     size_t pos = dllName.find_last_of(L"\\/");
@@ -235,6 +248,7 @@ void PerformInjection(HWND hwnd) {
     SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)(success ? L"Injection successful." : L"Injection failed."));
 
     EnableWindow(g_hInjectBtn, TRUE);
+    EnableWindow(g_hEjectBtn, TRUE);
     EnableWindow(g_hProcessCombo, TRUE);
     EnableWindow(g_hDllPathEdit, TRUE);
     EnableWindow(g_hBrowseBtn, TRUE);
@@ -243,6 +257,43 @@ void PerformInjection(HWND hwnd) {
     if (SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0) == BST_CHECKED) {
         EnableWindow(g_hDelayEdit, TRUE);
     }
+}
+
+void PerformEjection(HWND hwnd) {
+    wchar_t processInfo[MAX_PATH], dllPath[MAX_PATH];
+    GetWindowText(g_hProcessCombo, processInfo, MAX_PATH);
+    GetWindowText(g_hDllPathEdit, dllPath, MAX_PATH);
+
+    std::wstring processInfoStr = processInfo;
+    std::wstring processName = processInfoStr.substr(0, processInfoStr.find(L" (PID:"));
+
+    std::wstring dllName = dllPath;
+    size_t pos = dllName.find_last_of(L"\\/");
+    if (pos != std::wstring::npos) dllName = dllName.substr(pos + 1);
+
+    AddLogMessage(L"Attempting to eject " + dllName + L" from " + processName + L"...");
+    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)L"Ejecting...");
+
+    bool success = false;
+    std::wstring resultMessage;
+
+    try {
+        DWORD pid = Injector::GetProcessIdByName(processName.c_str());
+        if (pid == 0) throw std::runtime_error("Process not found.");
+        Injector::Eject(pid, dllName);
+        resultMessage = L"SUCCESS: Ejected from " + processName + L" (PID: " + std::to_wstring(pid) + L")";
+        success = true;
+    }
+    catch (const std::runtime_error& e) {
+        std::string errorMsg = e.what();
+        std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end());
+        resultMessage = L"ERROR: " + wErrorMsg;
+    }
+
+    AddLogMessage(resultMessage);
+    SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)(success ? L"Ejection successful." : L"Ejection failed."));
+    EnableWindow(g_hInjectBtn, TRUE);
+    EnableWindow(g_hEjectBtn, TRUE);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -294,6 +345,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             wchar_t processName[MAX_PATH], dllPath[MAX_PATH];
             GetWindowText(g_hProcessCombo, processName, MAX_PATH);
             GetWindowText(g_hDllPathEdit, dllPath, MAX_PATH);
+            SaveLastDllPath(dllPath);
 
             if (wcslen(processName) == 0 || wcslen(dllPath) == 0) {
                 AddLogMessage(L"Error: Please specify a process and a DLL path.");
@@ -301,6 +353,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
 
             EnableWindow(g_hInjectBtn, FALSE);
+            EnableWindow(g_hEjectBtn, FALSE);
 
             LRESULT checked = SendMessage(g_hDelayCheck, BM_GETCHECK, 0, 0);
             if (checked == BST_CHECKED) {
@@ -328,6 +381,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             else {
                 PerformInjection(hwnd);
             }
+            break;
+        }
+        case IDC_EJECT_BTN: {
+            PerformEjection(hwnd);
             break;
         }
         }
@@ -379,7 +436,7 @@ void ApplyProcessFilter() {
         std::wstring lowerProcessName = processName;
         std::transform(lowerProcessName.begin(), lowerProcessName.end(), lowerProcessName.begin(), ::towlower);
 
-        if (filter.empty() || lowerProcessName.find(filter) == 0) {
+        if (filter.empty() || lowerProcessName.find(filter) != std::wstring::npos) {
             SendMessage(g_hProcessCombo, CB_ADDSTRING, 0, (LPARAM)processName.c_str());
         }
     }
@@ -396,7 +453,7 @@ void PopulateProcessList() {
     g_allProcessNames.clear();
     for (const auto& p : processes) {
         if (p.name.length() > 0) {
-            g_allProcessNames.push_back(p.name);
+            g_allProcessNames.push_back(p.name + L" (PID: " + std::to_wstring(p.id) + L")");
         }
     }
 
@@ -407,4 +464,26 @@ void PopulateProcessList() {
 
     std::wstring statusText = L"Found " + std::to_wstring(g_allProcessNames.size()) + L" unique processes";
     SendMessage(g_hStatusBar, SB_SETTEXT, 0, (LPARAM)statusText.c_str());
+}
+
+std::wstring LoadLastDllPath() {
+    HKEY hKey;
+    if (RegOpenKeyEx(HKEY_CURRENT_USER, L"Software\\SynapseInjector", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        wchar_t path[MAX_PATH];
+        DWORD size = sizeof(path);
+        if (RegQueryValueEx(hKey, L"LastDllPath", NULL, NULL, (LPBYTE)path, &size) == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            return path;
+        }
+        RegCloseKey(hKey);
+    }
+    return L"";
+}
+
+void SaveLastDllPath(const std::wstring& path) {
+    HKEY hKey;
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, L"Software\\SynapseInjector", 0, NULL, 0, KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        RegSetValueEx(hKey, L"LastDllPath", 0, REG_SZ, (const BYTE*)path.c_str(), (path.length() + 1) * sizeof(wchar_t));
+        RegCloseKey(hKey);
+    }
 }

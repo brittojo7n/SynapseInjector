@@ -8,6 +8,7 @@
 #define IDI_SMALL                       108
 #define IDC_SYNAPSEINJECTOR             109
 #define IDR_MAINFRAME                   128
+#define IDC_EJECT_BTN                   112
 #define IDC_STATIC                      -1
 
 #ifdef APSTUDIO_INVOKED

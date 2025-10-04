@@ -3,6 +3,15 @@
 #include <algorithm>
 #include <memory>
 
+std::wstring Injector::GetErrorMessage(DWORD errorCode) {
+    LPWSTR messageBuffer = nullptr;
+    size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, NULL);
+    std::wstring message(messageBuffer, size);
+    LocalFree(messageBuffer);
+    return message;
+}
+
 bool Injector::EnableDebugPrivilege() {
     HANDLE hToken;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
@@ -86,7 +95,7 @@ void Injector::Inject(DWORD processId, const std::wstring& dllPath) {
     std::unique_ptr<void, decltype(processDeleter)> hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId), processDeleter);
 
     if (!hProcess) {
-        throw std::runtime_error("Failed to open target process. Error: " + std::to_string(GetLastError()));
+        throw std::runtime_error("Failed to open target process. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
     }
 
     size_t dllPathSize = (dllPath.length() + 1) * sizeof(wchar_t);
@@ -95,11 +104,11 @@ void Injector::Inject(DWORD processId, const std::wstring& dllPath) {
     std::unique_ptr<void, decltype(virtualFreeDeleter)> pAllocatedMem(VirtualAllocEx(hProcess.get(), NULL, dllPathSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE), virtualFreeDeleter);
 
     if (!pAllocatedMem) {
-        throw std::runtime_error("Failed to allocate memory in target process. Error: " + std::to_string(GetLastError()));
+        throw std::runtime_error("Failed to allocate memory in target process. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
     }
 
     if (!WriteProcessMemory(hProcess.get(), pAllocatedMem.get(), dllPath.c_str(), dllPathSize, NULL)) {
-        throw std::runtime_error("Failed to write to process memory. Error: " + std::to_string(GetLastError()));
+        throw std::runtime_error("Failed to write to process memory. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
     }
 
     HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -112,7 +121,60 @@ void Injector::Inject(DWORD processId, const std::wstring& dllPath) {
     std::unique_ptr<void, decltype(threadDeleter)> hRemoteThread(CreateRemoteThread(hProcess.get(), NULL, 0, (LPTHREAD_START_ROUTINE)pLoadLibrary, pAllocatedMem.get(), 0, NULL), threadDeleter);
 
     if (!hRemoteThread) {
-        throw std::runtime_error("Failed to create remote thread. Error: " + std::to_string(GetLastError()));
+        throw std::runtime_error("Failed to create remote thread. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
+    }
+
+    WaitForSingleObject(hRemoteThread.get(), 5000);
+}
+
+void Injector::Eject(DWORD processId, const std::wstring& dllName) {
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
+    if (hSnap == INVALID_HANDLE_VALUE) {
+        throw std::runtime_error("Failed to create module snapshot. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
+    }
+
+    MODULEENTRY32 me32;
+    me32.dwSize = sizeof(MODULEENTRY32);
+    HMODULE hModule = NULL;
+
+    if (Module32First(hSnap, &me32)) {
+        std::wstring dllNameLower = dllName;
+        std::transform(dllNameLower.begin(), dllNameLower.end(), dllNameLower.begin(), ::tolower);
+        do {
+            std::wstring currentModuleName = me32.szModule;
+            std::transform(currentModuleName.begin(), currentModuleName.end(), currentModuleName.begin(), ::tolower);
+            if (currentModuleName == dllNameLower) {
+                hModule = me32.hModule;
+                break;
+            }
+        } while (Module32Next(hSnap, &me32));
+    }
+
+    CloseHandle(hSnap);
+
+    if (!hModule) {
+        throw std::runtime_error("Module not found in the target process.");
+    }
+
+    auto processDeleter = [](HANDLE h) { if (h) CloseHandle(h); };
+    std::unique_ptr<void, decltype(processDeleter)> hProcess(OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId), processDeleter);
+
+    if (!hProcess) {
+        throw std::runtime_error("Failed to open target process. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
+    }
+
+    HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
+    FARPROC pFreeLibrary = GetProcAddress(hKernel32, "FreeLibrary");
+
+    if (!pFreeLibrary) {
+        throw std::runtime_error("Failed to get FreeLibrary address.");
+    }
+
+    auto threadDeleter = [](HANDLE h) { if (h) CloseHandle(h); };
+    std::unique_ptr<void, decltype(threadDeleter)> hRemoteThread(CreateRemoteThread(hProcess.get(), NULL, 0, (LPTHREAD_START_ROUTINE)pFreeLibrary, hModule, 0, NULL), threadDeleter);
+
+    if (!hRemoteThread) {
+        throw std::runtime_error("Failed to create remote thread for ejection. Error: " + std::string(GetErrorMessage(GetLastError()).begin(), GetErrorMessage(GetLastError()).end()));
     }
 
     WaitForSingleObject(hRemoteThread.get(), 5000);
